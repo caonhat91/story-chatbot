@@ -41,22 +41,17 @@ const send = () => {
   const payload = {
     sessionId,
     question,
-    history: messages.value.map(m => [m.role, m.text])
+    provider: 'openai',
   };
 
   streamChat(payload, (chunk: string) => {
     const lines = chunk.split("\n\n")
     const lastIdx = messages.value.map(m => m.role).lastIndexOf('bot');
 
-    for (const line of lines) {
-      if (line.startsWith("data:")) {
-        const json = line.replace("data:", "").trim()
-        const data = JSON.parse(json)
-        if (lastIdx >= 0 && messages.value[lastIdx]) {
-          messages.value[lastIdx].text += data.token
-        }
-      }
+    if (lastIdx >= 0 && messages.value[lastIdx]) {
+      messages.value[lastIdx].text += lines;
     }
+
 
     scrollToBottom();
     isStreaming.value = false;
