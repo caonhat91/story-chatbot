@@ -168,6 +168,9 @@ uv --version
 
 
 ## Chạy nhanh
+> Tạo file .env.local từ file .env.
+> 
+> Thay `GEMINI_API_KEY` | `OPENAI_API_KEY` | `LANGSMITH_API_KEY`
 
 ```bash
 # Backend
