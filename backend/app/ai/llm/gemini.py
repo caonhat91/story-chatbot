@@ -4,9 +4,9 @@ from .base import LLMProvider
 
 class GeminiLLM(LLMProvider):
 
-    def build(self):
+    def get_llm(self, model: str | None = None) -> ChatGoogleGenerativeAI:
         return ChatGoogleGenerativeAI(
             google_api_key=GEMINI_API_KEY,
-            model=GEMINI_MODEL,
+            model=model or GEMINI_MODEL,
             streaming=True,
         )

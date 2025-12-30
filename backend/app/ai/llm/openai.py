@@ -4,10 +4,10 @@ from .base import LLMProvider
 
 class OpenAILLM(LLMProvider):
 
-    def get_llm(self):
+    def get_llm(self, model: str | None = None) -> ChatOpenAI:
         return ChatOpenAI(
             api_key=OPENAI_API_KEY,
-            model=OPENAI_MODEL,
+            model=model or OPENAI_MODEL,
             streaming=True,
             temperature=0.7,
         )

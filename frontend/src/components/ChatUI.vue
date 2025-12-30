@@ -2,98 +2,82 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { streamChat } from '@/api/chat'
 
-const messages = ref<Array<{ role: string, text: string }>>([]);
-const messagesRef = ref<HTMLElement | null>(null);
-const sessionId = Math.random().toString(36).substring(2, 15);
+interface Message {
+  role: 'user' | 'bot'
+  text: string
+}
+
+const messages = ref<Message[]>([])
+const messagesRef = ref<HTMLElement | null>(null)
+const sessionId = Math.random().toString(36).substring(2, 15)
 const input = ref('')
-let controller: AbortController | null = null
 const isStreaming = ref(false)
+let controller: AbortController | null = null
 
 const isAtBottom = computed(() => {
   if (!messagesRef.value) return true
   const el = messagesRef.value
   return el.scrollHeight - el.scrollTop - el.clientHeight < 50
-});
+})
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (messagesRef.value) {
-      messagesRef.value.scrollTop =
-        messagesRef.value.scrollHeight
-    }
-  })
+const scrollToBottom = () => {
+  nextTick(() => messagesRef.value && (messagesRef.value.scrollTop = messagesRef.value.scrollHeight))
 }
 
-const send = () => {
-  const question = input.value;
-  if (!question) return;
-
-  controller = new AbortController();
-  isStreaming.value = true;
-
-  messages.value.push({ role: "user", text: question });
-  messages.value.push({ role: "bot", text: "" });
-
-  if (isAtBottom.value) {
-    scrollToBottom();
+const updateBotMsg = (text: string) => {
+  const lastMsg = messages.value[messages.value.length - 1]
+  if (lastMsg?.role === 'bot') {
+    lastMsg.text += text
   }
+}
 
-  const payload = {
-    sessionId,
-    question,
-    provider: 'openai',
-  };
+const send = async () => {
+  if (!input.value) return
 
-  streamChat(payload, (chunk: string) => {
-    const lines = chunk.split("\n\n")
-    const lastIdx = messages.value.map(m => m.role).lastIndexOf('bot');
+  const question = input.value
+  controller = new AbortController()
+  isStreaming.value = true
 
-    if (lastIdx >= 0 && messages.value[lastIdx]) {
-      messages.value[lastIdx].text += lines;
-    }
+  messages.value.push({ role: 'user', text: question }, { role: 'bot', text: '' })
+  if (isAtBottom.value) scrollToBottom()
 
-
-    scrollToBottom();
-    isStreaming.value = false;
-  }, controller.signal).catch((err) => {
-    const lastIdx = messages.value.map(m => m.role).lastIndexOf('bot');
-    if (lastIdx >= 0 && messages.value[lastIdx]) {
-      messages.value[lastIdx].text += 'ChatBot is busy.';
-    }
-    setTimeout(() => {
-      if (lastIdx >= 0 && messages.value[lastIdx]) {
-        messages.value[lastIdx].text += '\nPlease try again later.';
-      }
-    }, 100);
-    console.error(err);
-    isStreaming.value = false;
-  });
-
-  input.value = "";
-};
+  try {
+    await streamChat(
+      { sessionId, question, provider: 'openai' },
+      (chunk: string) => {
+        updateBotMsg(chunk.split('\n\n').join(''))
+        scrollToBottom()
+        isStreaming.value = false
+      },
+      controller.signal
+    )
+  } catch (err) {
+    updateBotMsg('ChatBot is busy.\nPlease try again later.')
+    console.error(err)
+    isStreaming.value = false
+  }
+  input.value = ''
+}
 
 const stopStream = () => {
-  if (!controller) {
-    return;
-  }
-  controller.abort();
-  isStreaming.value = false;
-};
+  controller?.abort()
+  isStreaming.value = false
+}
 
-watch(messages, scrollToBottom, { deep: true });
+watch(messages, scrollToBottom, { deep: true })
 </script>
 
 <template>
-  <div class="chat">
-    <div class="messages" ref="messagesRef">
-      <div v-for="(m, i) in messages" :key="i" :class="'msg ' + (m.role === 'user' ? 'user' : 'bot')">
+  <div class="chat" :style="{ '--chat-height': messages.length ? '100%' : 'auto' }">
+    <div ref="messagesRef" class="messages" :style="{ '--padding': messages.length ? '12px' : '0' }">
+      <div v-for="(m, i) in messages" :key="i" :class="`msg ${m.role}`">
         <div class="avatar">
           <img v-if="m.role === 'user'" src="@/assets/user-avatar.svg" alt="User Avatar" />
           <img v-else src="@/assets/bot-avatar.svg" alt="Bot Avatar" />
         </div>
         <div class="msg-content">
           {{ m.text }}
-          <span v-if="isStreaming && m.role === 'bot' && !m.text" class="cursor">▍</span>
+          <span v-if="isStreaming && m.role === 'bot' && !m.text" class="cursor">|</span>
         </div>
       </div>
     </div>
@@ -101,18 +85,17 @@ watch(messages, scrollToBottom, { deep: true });
     <div class="question">
       <input v-model="input" v-focus-slash :disabled="isStreaming" @keyup.enter="send"
         placeholder="Ask about the story..." autofocus />
-      <kbd v-if="!isStreaming">/</kbd>
-      <button v-if="isStreaming" class="stop-button" @click="stopStream">&#9632;</button>
+      <kbd v-show="!isStreaming && !input">/</kbd>
+      <button v-show="!isStreaming && input" class="send-button" @click="send">&#8593;</button>
+      <button v-show="isStreaming" class="stop-button" @click="stopStream">&#9632;</button>
     </div>
   </div>
 </template>
 
 <style lang="scss">
 .chat {
-  margin: auto;
   width: 100%;
-  max-width: 80vw;
-  min-height: 60vh;
+  height: var(--chat-height);
   display: flex;
   flex-direction: column;
 }
@@ -120,7 +103,7 @@ watch(messages, scrollToBottom, { deep: true });
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--padding);
 }
 
 .msg {
@@ -218,7 +201,8 @@ watch(messages, scrollToBottom, { deep: true });
     margin-right: 4px;
   }
 
-  .stop-button {
+  .stop-button,
+  .send-button {
     margin-left: auto;
     background-color: var(--color-text);
     border: none;
